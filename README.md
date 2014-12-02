@@ -13,8 +13,8 @@ For development I'm using module like this, any other module should work too.
 Features
 ========
 
-Receiving Packets
-Sending Packets
+- Receiving Packets
+- Sending Packets
 
 Screenshot
 ==========
