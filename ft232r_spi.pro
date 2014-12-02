@@ -21,17 +21,17 @@ win32 {
     LIBS += -L"../win/CDM v2.08.30 WHQL Certified/i386" -lftd2xx
 }
 
-SOURCES += main.cpp\
-        mainwindow.cpp \
-        ftdipinout.cpp \
-    dumpdialog.cpp
+SOURCES += src/main.cpp\
+        src/mainwindow.cpp \
+        src/ftdipinout.cpp \
+    src/dumpdialog.cpp
 
-HEADERS  += mainwindow.h \
-           ftdipinout.h \
+HEADERS  += src/mainwindow.h \
+           src/ftdipinout.h \
     ../../nrf24l01_lib/nrf24l01.h \
-    dumpdialog.h
+    src/dumpdialog.h
 
-FORMS    += mainwindow.ui \
-            FTDI_Pinout.ui \
-    dumpdialog.ui
+FORMS    += ui/mainwindow.ui \
+            ui/FTDI_Pinout.ui \
+    ui/dumpdialog.ui
 
