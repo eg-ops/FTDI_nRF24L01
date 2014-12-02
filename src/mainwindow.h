@@ -10,8 +10,14 @@
 #include <QByteArray>
 #ifdef _WIN32
 #include <Windows.h>
-#endif
 #include <ftd2xx.h>
+#endif
+
+
+#ifdef __linux__
+#include <ftdi.h>
+#endif
+
 #include "../../nrf24l01_lib/nrf24l01.h"
 
 
@@ -29,8 +35,13 @@ public:
 
 private:
     Ui::MainWindow *ui;
+
+#ifdef _WIN32
     FT_DEVICE_LIST_INFO_NODE * devlist;
     FT_HANDLE ftHandle;
+#elif __linux__
+    struct ftdi_context *ftdi;
+#endif
 
     void addByte(QByteArray * array, unsigned char byte);
     unsigned char state;
@@ -54,11 +65,11 @@ private:
 
 	 int oldEN_AA;
 
-
+    void setUiEnabled(bool enabled);
 
 public slots:
     void onOpen();
-    void onSendCmd();
+    void readConfig();
 	void onTestConnection();
     void onAddressWidthChanged();
     void onRX1Changed();
@@ -87,6 +98,8 @@ public slots:
     void checkNewPacket();
 
 	void configPinouts();
+
+    void onDynPayloadLen(bool state);
 	
 };
 

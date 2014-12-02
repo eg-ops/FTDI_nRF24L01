@@ -12,13 +12,17 @@ TARGET = ft232r_spi
 TEMPLATE = app
 
 unix {
-    INCLUDEPATH += "../linux/release"
-    LIBS += -L../linux/release/build/x86_64 -lftd2xx
+    ftd2xx {
+        INCLUDEPATH += "deps/linux/release"
+        LIBS += -L"deps/linux/release/build/x86_64" -lftd2xx
+    } else {
+        LIBS += -lftdi
+    }
 }
 
 win32 {
-    INCLUDEPATH += "../win"
-    LIBS += -L"../win/CDM v2.08.30 WHQL Certified/i386" -lftd2xx
+    INCLUDEPATH += "deps/win"
+    LIBS += -L"deps/win/CDM v2.08.30 WHQL Certified/i386" -lftd2xx
 }
 
 SOURCES += src/main.cpp\

@@ -7,16 +7,14 @@
 
 
 
-MainWindow::MainWindow(QWidget *parent) :
-    QMainWindow(parent),
-    ui(new Ui::MainWindow)
+MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
 
 	oldEN_AA = 0x3F;
 
     connect(ui->openPortButton, SIGNAL(clicked()), this, SLOT(onOpen()));
-    connect(ui->sendCmdButton, SIGNAL(clicked()), this, SLOT(onSendCmd()));
+    connect(ui->sendCmdButton, SIGNAL(clicked()), this, SLOT(readConfig()));
 	connect(ui->testButton, SIGNAL(clicked()), this, SLOT(onTestConnection()));
     connect(ui->addressWidth3, SIGNAL(clicked()), this ,SLOT(onAddressWidthChanged()));
     connect(ui->addressWidth4, SIGNAL(clicked()), this ,SLOT(onAddressWidthChanged()));
@@ -34,6 +32,7 @@ MainWindow::MainWindow(QWidget *parent) :
     connect(ui->autoRetransmitGroupBox, SIGNAL(clicked(bool)), this, SLOT(onAutoRetransmit(bool)));
     connect(ui->retransmitCount, SIGNAL(valueChanged(int)), this, SLOT(onRetransmitCount(int)));
     connect(ui->retransmitDelay, SIGNAL(valueChanged(int)), this, SLOT(onRetransmitDelay(int)));
+    connect(ui->dynPacketLen, SIGNAL(clicked(bool)), this, SLOT(onDynPayloadLen(bool)));
 
     connect(ui->enRX0, SIGNAL(clicked(bool)), this, SLOT(onPipeEnable(bool)));
     connect(ui->enRX1, SIGNAL(clicked(bool)), this, SLOT(onPipeEnable(bool)));
@@ -72,21 +71,20 @@ MainWindow::MainWindow(QWidget *parent) :
     connect(ui->rx4Address, SIGNAL(editingFinished()), this, SLOT(onAddressChange()));
     connect(ui->rx5Address, SIGNAL(editingFinished()), this, SLOT(onAddressChange()));
 
-	//connect(ui->rxMode, SIGNAL(clicked()), this, SLOT(onModeChange()));
-	//connect(ui->txMode, SIGNAL(clicked()), this, SLOT(onModeChange()));
+    QFontMetrics fm(ui->txAddress->font());
+    int max_width = fm.width(QString("00:00:00:00:00")) * 1.15;
 
-	connect(ui->sendPacketButoon, SIGNAL(clicked()), this, SLOT(onSendPacket()));
+    ui->txAddress->setMaximumWidth(max_width);
+    ui->rx0Address->setMaximumWidth(max_width);
+    ui->rx1Address->setMaximumWidth(max_width);
+
+
+    connect(ui->sendPacketButoon, SIGNAL(clicked()), this, SLOT(onSendPacket()));
 
 	connect(ui->tabWidget, SIGNAL(currentChanged(int)), this, SLOT(onTabModeChange(int)));
 
     connect(ui->configPinoutButton, SIGNAL(clicked()), this, SLOT(configPinouts()));
 
-    ui->addressWidth5->click();
-
-    //QStringList labels;
-    //labels << "time" << "pipe" << "size" << "data";
-
-    //ui->tableWidget->setHorizontalHeaderLabels(labels);
     ui->tableWidget->setColumnWidth(0,200);
     ui->tableWidget->verticalHeader()->hide();
     ui->tableWidget->setShowGrid(false);
@@ -94,6 +92,11 @@ MainWindow::MainWindow(QWidget *parent) :
 	ui->tableWidget_2->setColumnWidth(0,200);
 	ui->tableWidget_2->verticalHeader()->hide();
 	ui->tableWidget_2->setShowGrid(false);
+
+    setUiEnabled(false);
+
+
+#ifdef _WIN32
 
     DWORD version = 0;
     if (FT_GetLibraryVersion(&version) == FT_OK){
@@ -116,10 +119,35 @@ MainWindow::MainWindow(QWidget *parent) :
         }
     }
 
+#elif __linux__
+
+    ftdi = ftdi_new();
+    if (ftdi){
+        struct ftdi_device_list *devlist,  *curdev;
+        int devices = ftdi_usb_find_all(ftdi, &devlist, 0, 0);
+        if (devices > 0){
+            char manufacturer[128], description[128], serial[128];
+            int i;
+            for (curdev = devlist; curdev != NULL; i++){
+
+                ftdi_usb_get_strings(ftdi, curdev->dev, manufacturer, sizeof(manufacturer)-1, description, sizeof(description)-1, serial, sizeof(serial)-1);
+                QString descr = QString("%1_%2").arg(curdev->dev->descriptor.idVendor),arg(curdev->dev->descriptor.idProduct);
+                ui->comboBox->addItem(QString("%1 / %2").arg(description).arg(serial), descr);
+                curdev = curdev->next;
+            }
+            ftdi_list_free(&devlist);
+        }
+
+    }
+
+
+#endif
+
 }
 
 MainWindow::~MainWindow()
 {
+    ftdi_free(ftdi);
     delete ui;
 }
 
@@ -142,8 +170,9 @@ MainWindow::~MainWindow()
 
 void MainWindow::onOpen(){
 
+#ifdef _WIN32
     int index = ui->comboBox->itemData(ui->comboBox->currentIndex()).value<int>();
-    //ftHandle = devlist[index].ftHandle;
+
 	if (FT_Open(index, &ftHandle) == FT_OK){
 		qDebug() << "opened";
         FT_SetUSBParameters(ftHandle, 0, 0);
@@ -157,6 +186,25 @@ void MainWindow::onOpen(){
         qDebug() << written;
 
     }
+#elif __linux__
+
+    QString descriptor = ui->comboBox->itemData(ui->comboBox->currentIndex()).value<QString>();
+    QStringList values = descriptor.split("_");
+    if (values.size() == 2){
+
+        ftdi_usb_open(ftdi, values.at(0).toInt(), values.at(0).toInt());
+
+        ftdi_set_bitmode(ftdi, CSN | SCK | MOSI | CE, BITMODE_SYNCBB);
+
+        state = CSN | CE;
+
+        ftdi_write_data(ftdi, &state, 1);
+    }
+#endif
+
+    setUiEnabled(true);
+
+    readConfig();
 }
 
 int MainWindow::randInt(int low, int high)
@@ -195,7 +243,7 @@ void MainWindow::onTestConnection(){
 }
 
 
-void MainWindow::onSendCmd(){
+void MainWindow::readConfig(){
 
 
     unsigned char cmd[6] = {10,0,0,0,0,0};
@@ -256,6 +304,8 @@ void MainWindow::onSendCmd(){
     ui->autoRetransmitGroupBox->setChecked(count != 0);
     ui->retransmitCount->setValue(count);
     ui->retransmitDelay->setValue(delay);
+
+    ui->dynPacketLen->setChecked(is_dyn_size_enabled());
 
 
     switch(get_address_width()){
@@ -389,7 +439,6 @@ void MainWindow::addByte(QByteArray * array, unsigned char byte){
 
 void MainWindow::nrf24l01p_spi_rw(unsigned char *write, unsigned char *read, int size){
 
-    DWORD written = 0;
     QByteArray buff;
 
 
@@ -404,16 +453,20 @@ void MainWindow::nrf24l01p_spi_rw(unsigned char *write, unsigned char *read, int
     state |= CSN;
     buff.append(state);
 
-    //qDebug() << buff.data();
-
-
-    FT_Write(ftHandle,(void*)buff.data(), buff.length(), &written);
-    //qDebug() << written;
     QByteArray buffRead(buff.length(), 0);
+
+
+#ifdef _WIN32
+    DWORD written = 0;
+    FT_Write(ftHandle,(void*)buff.data(), buff.length(), &written);
     written = 0;
     FT_Read(ftHandle, (void*) buffRead.data(), buffRead.length(), &written);
-    //qDebug() << written;
+#elif __linux__
+    unsigned int written = 0;
+    written = ftdi_write_data(ftdi, (unsigned char*)buff.data(), buff.length());
+    ftdi_read_data(ftdi, (unsigned char*) buffRead.data(), buffRead.length());
 
+#endif
     nrf24l01p_spi_decode((unsigned char*)buffRead.data(), written, read);
 
 }
@@ -654,17 +707,19 @@ void MainWindow::checkNewPacket(){
     //TODO while
     if ((fifo_status & (1 << RX_FIFO_EMPTY)) == 0){
        int pipe = (status  >> RX_P_NO) & 7;
-       int pipe_size = nrf24l01p_read_byte(RX_PW_P0+pipe);
-       //get_dyn_packet_size();
+
+       int pipe_size = ui->dynPacketLen->isChecked() ? get_dyn_packet_size() : nrf24l01p_read_byte(RX_PW_P0+pipe);
+
        unsigned char buff[32] = {0};
-       unsigned short * stat = (unsigned short*) &buff;
+
        nrf24l01p_read(R_RX_PAYLOAD, buff, pipe_size);
        QString dump;
        for (int i = 0; i < pipe_size; i++){
            dump += QString("%1").arg(buff[i], 2, 16, QChar('0')).toUpper();
        }
 
-       float temp = buff[0] + (buff[1] ? 0.5 : 0);
+       //unsigned short * stat = (unsigned short*) &buff;
+       //float temp = buff[0] + (buff[1] ? 0.5 : 0);
        //qDebug() << "dump " << pipe << pipe_size << dump << temp << swap(stat[1]);
 
        int row = ui->tableWidget->rowCount();
@@ -677,8 +732,6 @@ void MainWindow::checkNewPacket(){
 
 
     }
-
-	//qDebug() << QDateTime::currentDateTime().toString("hh:mm:ss.zzz") << "check end";
 
 }
 
@@ -876,11 +929,27 @@ void MainWindow::save()
 
 }
 
+void MainWindow::setUiEnabled(bool enabled)
+{
+    ui->adressesGroupBox->setEnabled(enabled);
+    ui->settingsGroupBox->setEnabled(enabled);
+    ui->tabWidget->setEnabled(enabled);
+}
+
 void MainWindow::configPinouts()
 {
 	FTDIPinout * pinoutDialog = new FTDIPinout(this);
 	pinoutDialog->setModal(true);
-	pinoutDialog->show();
+    pinoutDialog->show();
+}
+
+void MainWindow::onDynPayloadLen(bool state)
+{
+    if (state){
+        dyn_size_enable();
+    } else {
+        dyn_size_enable();
+    }
 }
 
 
