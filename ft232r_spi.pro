@@ -28,12 +28,16 @@ win32 {
 SOURCES += src/main.cpp\
         src/mainwindow.cpp \
         src/ftdipinout.cpp \
-    src/dumpdialog.cpp
+    src/dumpdialog.cpp \
+    src/hexvalidator.cpp \
+    src/ft232r_spi.cpp
 
 HEADERS  += src/mainwindow.h \
            src/ftdipinout.h \
     ../../nrf24l01_lib/nrf24l01.h \
-    src/dumpdialog.h
+    src/dumpdialog.h \
+    src/hexvalidator.h \
+    src/ft232r_spi.h
 
 FORMS    += ui/mainwindow.ui \
             ui/FTDI_Pinout.ui \

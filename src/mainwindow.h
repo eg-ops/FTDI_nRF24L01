@@ -56,16 +56,14 @@ private:
     uint8_t nrf24l01p_read(uint8_t reg, uint8_t * mem, int size);
     uint8_t nrf24l01p_write(uint8_t reg, uint8_t * mem, int size);
     uint8_t nrf24l01p_read_byte(uint8_t reg);
-    void nrf24l01p_write_byte(uint8_t reg, uint8_t value);
-
-	int randInt(int low, int high);
-
-	void save();
+    uint8_t nrf24l01p_write_byte(uint8_t reg, uint8_t value);
+    void save();
     QTimer * timer;
 
 	 int oldEN_AA;
 
     void setUiEnabled(bool enabled);
+
 
 public slots:
     void onOpen();
@@ -90,16 +88,13 @@ public slots:
     void onFixedSizeEnable(bool state);
     void onPipeSizeChange(int newSize);
 
-	void onModeChange();
 	void onTabModeChange(int index);
-
 	void onSendPacket();
-
     void checkNewPacket();
-
 	void configPinouts();
-
     void onDynPayloadLen(bool state);
+    void onHexChanged(bool state);
+    void scanDevices();
 	
 };
 

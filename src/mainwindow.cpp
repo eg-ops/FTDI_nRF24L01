@@ -4,6 +4,7 @@
 #include <QStandardItem>
 #include <QSettings>
 #include "ftdipinout.h"
+#include "hexvalidator.h"
 
 
 
@@ -14,7 +15,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
 	oldEN_AA = 0x3F;
 
     connect(ui->openPortButton, SIGNAL(clicked()), this, SLOT(onOpen()));
-    connect(ui->sendCmdButton, SIGNAL(clicked()), this, SLOT(readConfig()));
+    connect(ui->refreshButton, SIGNAL(clicked()), this, SLOT(scanDevices()));
 	connect(ui->testButton, SIGNAL(clicked()), this, SLOT(onTestConnection()));
     connect(ui->addressWidth3, SIGNAL(clicked()), this ,SLOT(onAddressWidthChanged()));
     connect(ui->addressWidth4, SIGNAL(clicked()), this ,SLOT(onAddressWidthChanged()));
@@ -32,7 +33,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     connect(ui->autoRetransmitGroupBox, SIGNAL(clicked(bool)), this, SLOT(onAutoRetransmit(bool)));
     connect(ui->retransmitCount, SIGNAL(valueChanged(int)), this, SLOT(onRetransmitCount(int)));
     connect(ui->retransmitDelay, SIGNAL(valueChanged(int)), this, SLOT(onRetransmitDelay(int)));
-    connect(ui->dynPacketLen, SIGNAL(clicked(bool)), this, SLOT(onDynPayloadLen(bool)));
+    connect(ui->dynPayloadLen, SIGNAL(clicked(bool)), this, SLOT(onDynPayloadLen(bool)));
 
     connect(ui->enRX0, SIGNAL(clicked(bool)), this, SLOT(onPipeEnable(bool)));
     connect(ui->enRX1, SIGNAL(clicked(bool)), this, SLOT(onPipeEnable(bool)));
@@ -79,10 +80,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     ui->rx1Address->setMaximumWidth(max_width);
 
 
+    connect(ui->hexPayload, SIGNAL(clicked(bool)), this, SLOT(onHexChanged(bool)));
     connect(ui->sendPacketButoon, SIGNAL(clicked()), this, SLOT(onSendPacket()));
-
 	connect(ui->tabWidget, SIGNAL(currentChanged(int)), this, SLOT(onTabModeChange(int)));
-
     connect(ui->configPinoutButton, SIGNAL(clicked()), this, SLOT(configPinouts()));
 
     ui->tableWidget->setColumnWidth(0,200);
@@ -96,52 +96,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     setUiEnabled(false);
 
 
-#ifdef _WIN32
-
-    DWORD version = 0;
-    if (FT_GetLibraryVersion(&version) == FT_OK){
-        qDebug() << "GetLibraryVersion: " <<  QString("%1").arg(version, 0, 16);;
-    }
-
-    DWORD numDevs = 0;
-    if (FT_CreateDeviceInfoList(&numDevs) == FT_OK){
-        if (numDevs){
-            devlist = (FT_DEVICE_LIST_INFO_NODE *)malloc(sizeof(FT_DEVICE_LIST_INFO_NODE)*numDevs);
-            if (FT_GetDeviceInfoList(devlist, &numDevs) == FT_OK){
-                for (int i = 0; i < (int)numDevs; i++){
-                    if (devlist[i].Type == FT_DEVICE_232R){
-                        ui->comboBox->addItem(QString("%1 / %2").arg(devlist[i].Description).arg(devlist[i].SerialNumber), i);
-                        qDebug() << devlist[i].ftHandle;
-                    }
-                }
-            }
-            free(devlist);
-        }
-    }
-
-#elif __linux__
-
-    ftdi = ftdi_new();
-    if (ftdi){
-        struct ftdi_device_list *devlist,  *curdev;
-        int devices = ftdi_usb_find_all(ftdi, &devlist, 0, 0);
-        if (devices > 0){
-            char manufacturer[128], description[128], serial[128];
-            int i;
-            for (curdev = devlist; curdev != NULL; i++){
-
-                ftdi_usb_get_strings(ftdi, curdev->dev, manufacturer, sizeof(manufacturer)-1, description, sizeof(description)-1, serial, sizeof(serial)-1);
-                QString descr = QString("%1_%2").arg(curdev->dev->descriptor.idVendor),arg(curdev->dev->descriptor.idProduct);
-                ui->comboBox->addItem(QString("%1 / %2").arg(description).arg(serial), descr);
-                curdev = curdev->next;
-            }
-            ftdi_list_free(&devlist);
-        }
-
-    }
-
-
-#endif
+    scanDevices();
 
 }
 
@@ -173,7 +128,7 @@ MainWindow::~MainWindow()
 void MainWindow::onOpen(){
 
 #ifdef _WIN32
-    int index = ui->comboBox->itemData(ui->comboBox->currentIndex()).value<int>();
+    int index = ui->devicesComboBox->itemData(ui->devicesComboBox->currentIndex()).value<int>();
 
 	if (FT_Open(index, &ftHandle) == FT_OK){
 		qDebug() << "opened";
@@ -190,7 +145,7 @@ void MainWindow::onOpen(){
     }
 #elif __linux__
 
-    QString descriptor = ui->comboBox->itemData(ui->comboBox->currentIndex()).value<QString>();
+    QString descriptor = ui->devicesComboBox->itemData(ui->devicesComboBox->currentIndex()).value<QString>();
     QStringList values = descriptor.split("_");
     if (values.size() == 2){
 
@@ -206,14 +161,10 @@ void MainWindow::onOpen(){
 
     setUiEnabled(true);
 
-    readConfig();
+    readConfigFromDevice();
 }
 
-int MainWindow::randInt(int low, int high)
-{
-	// Random number between low and high
-	return qrand() % ((high + 1) - low) + low;
-}
+
 
 
 void MainWindow::onTestConnection(){
@@ -225,7 +176,7 @@ void MainWindow::onTestConnection(){
 	for (int y = 0; y < 1000; y++){
 
         for (unsigned int i = 0; i < sizeof(addr); i++){
-			addr[i] = randInt(0,0xFF);
+            addr[i] = qrand();
 		}
 
 		nrf24l01p_write(W_REGISTER | TX_ADDR, addr, sizeof(addr));
@@ -245,29 +196,7 @@ void MainWindow::onTestConnection(){
 }
 
 
-void MainWindow::readConfig(){
-
-/*
-    unsigned char cmd[6] = {10,0,0,0,0,0};
-    unsigned char addr[6] = {0};
-    nrf24l01p_spi_rw(cmd,addr, sizeof(addr));
-
-    for (int i = 0; i < (int)sizeof(addr); i++){
-        qDebug() << QString::number(addr[i], 16);
-    }
-
-
-	unsigned char cmd2[2] = {6, 0};
-	unsigned char rf[2] = {0, 0};
-	
-
-	nrf24l01p_spi_rw(cmd2,rf, sizeof(rf));
-
-    for (int i = 0; i < (int)sizeof(rf); i++){
-		qDebug() << QString::number(rf[i], 16);
-	}
-*/
-
+void MainWindow::readConfigFromDevice(){
 
     ui->rfChannelSpinBox->setValue( 2400 + get_channel());
     ui->lnaGain->setChecked(is_lna_gain_enabled());
@@ -307,7 +236,7 @@ void MainWindow::readConfig(){
     ui->retransmitCount->setValue(count);
     ui->retransmitDelay->setValue(delay);
 
-    ui->dynPacketLen->setChecked(is_dyn_size_enabled());
+    ui->dynPayloadLen->setChecked(is_dyn_size_enabled());
 
     unsigned char addr_tx[5];
 
@@ -349,24 +278,9 @@ void MainWindow::readConfig(){
 	}
 
 
-    //nrf24l01p_write_byte(W_REGISTER | RX_PW_P0, 4);
-
-	//set_pipe_size(0, 4);
-	//nrf24l01p_write_byte(W_REGISTER | FEATURE, (1 << EN_DPL));
-	//nrf24l01p_write_byte(W_REGISTER | FEATURE, 0);
 
 
     qDebug() << "RX_PW_P0" << nrf24l01p_read_byte(RX_PW_P0);
-
-	/*
-	uint8_t config = 0;
-	nrf24l01p_read_reg(CONFIG, &config, 1);
-	//config |= (1 << PWR_UP) | (1 << PRIM_RX);
-	//config &= ~((1 << MASK_MAX_RT) | (1<<MASK_RX_DR) | (1 << MASK_TX_DS));
-	nrf24l01p_write_reg(CONFIG, &config, 1);
-	nrf24l01p_read_reg(CONFIG, &config, 1);
-	*/
-
 
     power_up();
     set_rx_mode();
@@ -377,9 +291,6 @@ void MainWindow::readConfig(){
     timer->setInterval(10);
     connect(timer, SIGNAL(timeout()), this, SLOT(checkNewPacket()));
     timer->start();
-
-    //save();
-
 
 }
 
@@ -520,9 +431,9 @@ uint8_t MainWindow::nrf24l01p_read_byte(uint8_t reg){
     return buff;
 }
 
-void MainWindow::nrf24l01p_write_byte(uint8_t reg, uint8_t value){
+uint8_t MainWindow::nrf24l01p_write_byte(uint8_t reg, uint8_t value){
     uint8_t buff = value;
-    nrf24l01p_write(reg, &buff, sizeof(buff));
+    return nrf24l01p_write(reg, &buff, sizeof(buff));
 }
 
 bool MainWindow::changeAddrMask( int width )
@@ -569,7 +480,7 @@ void MainWindow::onAddressWidthChanged(){
 
         }
 
-        set_address_width(width-2);
+        set_address_width((width-2));
 
     }
 }
@@ -616,8 +527,8 @@ void MainWindow::onLNAGain(bool state){
 }
 
 void MainWindow::onRFChannel(int value){
+    power_down();
     set_channel((value-2400));
-	power_down();
 	power_up();
 }
 
@@ -699,7 +610,7 @@ void MainWindow::checkNewPacket(){
     if ((fifo_status & (1 << RX_FIFO_EMPTY)) == 0){
        int pipe = (status  >> RX_P_NO) & 7;
 
-	   bool dynamicSize = ui->dynPacketLen->isChecked();
+       bool dynamicSize = ui->dynPayloadLen->isChecked();
        int pipe_size = dynamicSize ? get_dyn_packet_size() : nrf24l01p_read_byte(RX_PW_P0+pipe);
 
 	   if (pipe_size > 32){
@@ -818,19 +729,7 @@ void MainWindow::onPipeSizeChange(int newSize){
 }
 
 
-void MainWindow::onModeChange(){
-	/*
-	if (ui->txMode->isChecked()){
-		timer->stop();
-		set_tx_mode();
-	} else if(ui->rxMode->isChecked()) {
-		set_rx_mode();
-		timer->start();
-	}
-	nrf24l01p_write(FLUSH_RX, 0, 0);
-	nrf24l01p_write(FLUSH_TX, 0, 0);
-	*/
-}
+
 
 
 
@@ -854,17 +753,19 @@ void MainWindow::onTabModeChange(int index){
 
 void MainWindow::onSendPacket(){
 
-	QString text = ui->packetData->text();
-
-	QByteArray barray = text.toLocal8Bit();
-    const char * data = barray.data();
-
     QString status = QString("Failed");
-	
+    QString text = ui->payloadData->text();
+    QByteArray binary;
+
+    if (ui->hexPayload->isChecked()){
+        binary = QByteArray::fromHex( QByteArray().append(text));
+    } else {
+        binary = text.toLocal8Bit();
+    }
 	
     if (ui->txAck->isChecked()){
 
-        nrf24l01p_write(W_TX_PAYLOAD, (uint8_t*)data, barray.length());
+        nrf24l01p_write(W_TX_PAYLOAD, (uint8_t*)binary.data(), binary.length());
 
         uint8_t fifo_st = 0, st = 0;
 
@@ -883,9 +784,8 @@ void MainWindow::onSendPacket(){
 
 
     } else {
-        nrf24l01p_write(W_TX_PAYLOAD_NOACK, (uint8_t*)data, barray.length());
+        nrf24l01p_write(W_TX_PAYLOAD_NOACK, (uint8_t*)binary.data(), binary.length());
         status = QString("Noack");
-
     }
 
 
@@ -894,7 +794,7 @@ void MainWindow::onSendPacket(){
 	ui->tableWidget_2->insertRow(row);
     ui->tableWidget_2->setItem(row, 0, new QTableWidgetItem(QDateTime::currentDateTime().toString("hh:mm:ss.zzz")));
     ui->tableWidget_2->setItem(row, 1, new QTableWidgetItem(ui->txAddress->text()));
-    ui->tableWidget_2->setItem(row, 2, new QTableWidgetItem(QString("%1(%2)").arg(text).arg(barray.length())));
+    ui->tableWidget_2->setItem(row, 2, new QTableWidgetItem(QString("%1(%2)").arg(text).arg(binary.length())));
     ui->tableWidget_2->setItem(row, 3, new QTableWidgetItem(status));
 	ui->tableWidget_2->scrollToBottom();
 
@@ -953,7 +853,78 @@ void MainWindow::onDynPayloadLen(bool state)
 	power_down();
 	nrf24l01p_write_byte(ACTIVATE, 0x73);
 	power_up();
-	*/
+    */
+}
+
+void MainWindow::onHexChanged(bool state)
+{
+    if (state){
+        ui->payloadData->setValidator(new HexValidator(this));
+        ui->payloadData->setText(QString::fromUtf8(ui->payloadData->text().toUtf8().toHex().constData()));
+    } else {
+        ui->payloadData->setValidator(0);
+        ui->payloadData->setText(QString::fromUtf8(QByteArray::fromHex( QByteArray().append(ui->payloadData->text())).constData()));
+    }
+}
+
+void MainWindow::scanDevices()
+{
+
+    ui->devicesComboBox->clear();
+
+#ifdef _WIN32
+
+    DWORD version = 0;
+    if (FT_GetLibraryVersion(&version) == FT_OK){
+        qDebug() << "GetLibraryVersion: " <<  QString("%1").arg(version, 0, 16);;
+    }
+
+    DWORD numDevs = 0;
+    if (FT_CreateDeviceInfoList(&numDevs) == FT_OK){
+        if (numDevs){
+            devlist = (FT_DEVICE_LIST_INFO_NODE *)malloc(sizeof(FT_DEVICE_LIST_INFO_NODE)*numDevs);
+            if (FT_GetDeviceInfoList(devlist, &numDevs) == FT_OK){
+                for (int i = 0; i < (int)numDevs; i++){
+                    if (devlist[i].Type == FT_DEVICE_232R){
+                        ui->devicesComboBox->addItem(QString("%1 / %2").arg(devlist[i].Description).arg(devlist[i].SerialNumber), i);
+                        qDebug() << devlist[i].ftHandle;
+                    }
+                }
+            }
+            free(devlist);
+        }
+    }
+
+#elif __linux__
+
+    if (!ftdi){
+        ftdi = ftdi_new();
+    }
+
+    if (ftdi){
+        struct ftdi_device_list *devlist,  *curdev;
+        int devices = ftdi_usb_find_all(ftdi, &devlist, 0, 0);
+        if (devices > 0){
+            char manufacturer[128], description[128], serial[128];
+            int i;
+            for (curdev = devlist; curdev != NULL; i++){
+
+                ftdi_usb_get_strings(ftdi, curdev->dev, manufacturer, sizeof(manufacturer)-1, description, sizeof(description)-1, serial, sizeof(serial)-1);
+                QString descr = QString("%1_%2").arg(curdev->dev->descriptor.idVendor),arg(curdev->dev->descriptor.idProduct);
+                ui->devicesComboBox->addItem(QString("%1 / %2").arg(description).arg(serial), descr);
+                curdev = curdev->next;
+            }
+            ftdi_list_free(&devlist);
+        }
+
+    }
+
+
+#endif
+
+
+    ui->controlButtons->setEnabled(ui->devicesComboBox->count() > 0);
+
 }
 
 
