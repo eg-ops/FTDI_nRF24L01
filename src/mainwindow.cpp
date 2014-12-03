@@ -147,7 +147,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
 
 MainWindow::~MainWindow()
 {
+#ifdef __linux__
     ftdi_free(ftdi);
+#endif
     delete ui;
 }
 
@@ -245,7 +247,7 @@ void MainWindow::onTestConnection(){
 
 void MainWindow::readConfig(){
 
-
+/*
     unsigned char cmd[6] = {10,0,0,0,0,0};
     unsigned char addr[6] = {0};
     nrf24l01p_spi_rw(cmd,addr, sizeof(addr));
@@ -264,7 +266,7 @@ void MainWindow::readConfig(){
     for (int i = 0; i < (int)sizeof(rf); i++){
 		qDebug() << QString::number(rf[i], 16);
 	}
-
+*/
 
 
     ui->rfChannelSpinBox->setValue( 2400 + get_channel());
@@ -307,19 +309,6 @@ void MainWindow::readConfig(){
 
     ui->dynPacketLen->setChecked(is_dyn_size_enabled());
 
-
-    switch(get_address_width()){
-    case 1:
-        ui->addressWidth3->setChecked(true);
-        break;
-    case 2:
-        ui->addressWidth4->setChecked(true);
-        break;
-    case 3:
-        ui->addressWidth5->setChecked(true);
-        break;
-    }
-
     unsigned char addr_tx[5];
 
     nrf24l01p_read(TX_ADDR, addr_tx, sizeof(addr_tx));
@@ -337,7 +326,7 @@ void MainWindow::readConfig(){
     nrf24l01p_read(RX_ADDR_P5, addr_tx, 1);
     ui->rx5Address->setText(QString("%1").arg(addr_tx[0], 2, 16, QChar('0')).toUpper());
 
-	int addrWidth = get_address_width();
+	int addrWidth = get_address_width() + 2;
 	QRadioButton *enRX= this->findChild<QRadioButton *>(QString("addressWidth%1").arg(addrWidth));
 	if (enRX){
 		enRX->setChecked(true);
@@ -580,7 +569,7 @@ void MainWindow::onAddressWidthChanged(){
 
         }
 
-        set_address_width(width);
+        set_address_width(width-2);
 
     }
 }
@@ -628,6 +617,8 @@ void MainWindow::onLNAGain(bool state){
 
 void MainWindow::onRFChannel(int value){
     set_channel((value-2400));
+	power_down();
+	power_up();
 }
 
 void MainWindow::onRFOutPower(int value){
@@ -708,7 +699,14 @@ void MainWindow::checkNewPacket(){
     if ((fifo_status & (1 << RX_FIFO_EMPTY)) == 0){
        int pipe = (status  >> RX_P_NO) & 7;
 
-       int pipe_size = ui->dynPacketLen->isChecked() ? get_dyn_packet_size() : nrf24l01p_read_byte(RX_PW_P0+pipe);
+	   bool dynamicSize = ui->dynPacketLen->isChecked();
+       int pipe_size = dynamicSize ? get_dyn_packet_size() : nrf24l01p_read_byte(RX_PW_P0+pipe);
+
+	   if (pipe_size > 32){
+		   //bad case
+			nrf24l01p_write(FLUSH_RX, 0, 0);
+			return;
+	   }
 
        unsigned char buff[32] = {0};
 
@@ -792,14 +790,14 @@ void MainWindow::onFixedSizeEnable(bool state){
 		
         //TODO if (is_dyn_size_enabled()){}
         if (state){
-            pipe_dyn_size_enable(pipeId);
+			pipe_dyn_size_disable(pipeId);            
 			int value = packetSizeRx->value();
 			qDebug() << QString("new packet size %1 @ %2").arg(value).arg(pipeId);
 			set_pipe_size(pipeId, value);
 			
         } else {
-            pipe_dyn_size_disable(pipeId);
 			set_pipe_size(pipeId, 0);
+			pipe_dyn_size_enable(pipeId);
         }
     }
 }
@@ -945,11 +943,17 @@ void MainWindow::configPinouts()
 
 void MainWindow::onDynPayloadLen(bool state)
 {
+	
     if (state){
         dyn_size_enable();
     } else {
-        dyn_size_enable();
+        dyn_size_disable();
     }
+	/*
+	power_down();
+	nrf24l01p_write_byte(ACTIVATE, 0x73);
+	power_up();
+	*/
 }
 
 
