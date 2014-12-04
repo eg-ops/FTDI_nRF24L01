@@ -43,3 +43,6 @@ FORMS    += ui/mainwindow.ui \
             ui/FTDI_Pinout.ui \
     ui/dumpdialog.ui
 
+RESOURCES += \
+    ft232r_spi.qrc
+
