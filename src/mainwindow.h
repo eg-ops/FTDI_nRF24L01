@@ -67,7 +67,7 @@ private:
 
 public slots:
     void onOpen();
-    void readConfig();
+    void readConfigFromDevice();
 	void onTestConnection();
     void onAddressWidthChanged();
     void onRX1Changed();

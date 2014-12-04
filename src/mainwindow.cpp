@@ -93,6 +93,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
 	ui->tableWidget_2->verticalHeader()->hide();
 	ui->tableWidget_2->setShowGrid(false);
 
+    ui->mainToolBar->insertWidget(ui->actionRefresh, ui->devicesComboBox);
+
+
     setUiEnabled(false);
 
 
@@ -617,7 +620,7 @@ void MainWindow::checkNewPacket(){
 		   //bad case
 			nrf24l01p_write(FLUSH_RX, 0, 0);
 			return;
-	   }
+	   } 
 
        unsigned char buff[32] = {0};
 
@@ -844,16 +847,23 @@ void MainWindow::configPinouts()
 void MainWindow::onDynPayloadLen(bool state)
 {
 	
-    if (state){
-        dyn_size_enable();
-    } else {
-        dyn_size_disable();
-    }
+	
 	/*
 	power_down();
 	nrf24l01p_write_byte(ACTIVATE, 0x73);
 	power_up();
     */
+
+    if (state){
+        dyn_size_enable();
+    } else {
+        dyn_size_disable();
+    }
+	power_down();
+	nrf24l01p_write(FLUSH_RX, 0, 0);
+	nrf24l01p_write(FLUSH_TX, 0, 0);
+	power_up();
+	
 }
 
 void MainWindow::onHexChanged(bool state)
