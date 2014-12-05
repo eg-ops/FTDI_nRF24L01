@@ -60,17 +60,22 @@ private:
     void save();
     QTimer * timer;
 
-	 int oldEN_AA;
+	int oldEN_AA;
+
+	unsigned char CSN;
+	unsigned char SCK;
+	unsigned char MOSI;
+	unsigned char MISO;
+	unsigned char CE;
 
     void setUiEnabled(bool enabled);
 
 
 public slots:
-    void onOpen();
+    void onOpen(bool opened);
     void readConfigFromDevice();
 	void onTestConnection();
     void onAddressWidthChanged();
-    void onRX1Changed();
 
     void onLNAGain(bool state);
     void onRFChannel(int value);

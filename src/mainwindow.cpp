@@ -6,7 +6,9 @@
 #include "ftdipinout.h"
 #include "hexvalidator.h"
 
-
+//#include <QtPlugin>
+//Q_IMPORT_PLUGIN(qpng)
+//Q_IMPORT_PLUGIN( qmng );
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWindow)
 {
@@ -14,13 +16,28 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
 
 	oldEN_AA = 0x3F;
 
-    connect(ui->openPortButton, SIGNAL(clicked()), this, SLOT(onOpen()));
-    connect(ui->refreshButton, SIGNAL(clicked()), this, SLOT(scanDevices()));
-	connect(ui->testButton, SIGNAL(clicked()), this, SLOT(onTestConnection()));
+	CSN = (1 << 0);
+	SCK = (1 << 1);
+	MOSI = (1 << 2);
+	MISO = (1 << 3);
+	CE = (1 << 4);
+
+#ifdef __linux__
+	ftdi = NULL;
+#endif
+    
+
+    connect(ui->actionConnect, SIGNAL(triggered(bool)), this, SLOT(onOpen(bool)));
+    connect(ui->actionRefresh, SIGNAL(triggered()), this, SLOT(scanDevices()));
+    connect(ui->actionTestConnection, SIGNAL(triggered()), this, SLOT(onTestConnection()));
+    connect(ui->actionPinout, SIGNAL(triggered()), this, SLOT(configPinouts()));
     connect(ui->addressWidth3, SIGNAL(clicked()), this ,SLOT(onAddressWidthChanged()));
     connect(ui->addressWidth4, SIGNAL(clicked()), this ,SLOT(onAddressWidthChanged()));
     connect(ui->addressWidth5, SIGNAL(clicked()), this ,SLOT(onAddressWidthChanged()));
     connect(ui->rx1Address, SIGNAL(textChanged(QString)), this, SLOT(onRX1Changed()));
+
+    ui->mainToolBar->insertWidget(ui->actionRefresh, ui->devicesComboBox);
+
 
     connect(ui->lnaGain, SIGNAL(clicked(bool)), this, SLOT(onLNAGain(bool)));
     connect(ui->rfChannelSpinBox, SIGNAL(valueChanged(int)), this, SLOT(onRFChannel(int)));
@@ -83,7 +100,6 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     connect(ui->hexPayload, SIGNAL(clicked(bool)), this, SLOT(onHexChanged(bool)));
     connect(ui->sendPacketButoon, SIGNAL(clicked()), this, SLOT(onSendPacket()));
 	connect(ui->tabWidget, SIGNAL(currentChanged(int)), this, SLOT(onTabModeChange(int)));
-    connect(ui->configPinoutButton, SIGNAL(clicked()), this, SLOT(configPinouts()));
 
     ui->tableWidget->setColumnWidth(0,200);
     ui->tableWidget->verticalHeader()->hide();
@@ -93,7 +109,10 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
 	ui->tableWidget_2->verticalHeader()->hide();
 	ui->tableWidget_2->setShowGrid(false);
 
-    ui->mainToolBar->insertWidget(ui->actionRefresh, ui->devicesComboBox);
+
+	timer = new QTimer(this);
+	timer->setInterval(10);
+	connect(timer, SIGNAL(timeout()), this, SLOT(checkNewPacket()));
 
 
     setUiEnabled(false);
@@ -113,28 +132,16 @@ MainWindow::~MainWindow()
 
 
 
-//1,5,3,11,2,9,10,6
+void MainWindow::onOpen(bool opened){
+    qDebug() << "onOpen" << opened;
 
-#define TXD 1
-#define RXD 5
-#define RTS 3
-#define CTS 11
-#define DTR 2
-
-
-#define CSN (1 << 0)
-#define SCK (1 << 1)
-#define MOSI (1 << 2)
-#define MISO (1 << 3)
-#define CE (1 << 4)
-
-void MainWindow::onOpen(){
+    if (opened){
 
 #ifdef _WIN32
     int index = ui->devicesComboBox->itemData(ui->devicesComboBox->currentIndex()).value<int>();
 
-	if (FT_Open(index, &ftHandle) == FT_OK){
-		qDebug() << "opened";
+    if (FT_Open(index, &ftHandle) == FT_OK){
+        qDebug() << "opened";
         FT_SetUSBParameters(ftHandle, 0, 0);
         FT_SetLatencyTimer(ftHandle, 2);
         FT_SetDivisor(ftHandle, 0);
@@ -162,9 +169,26 @@ void MainWindow::onOpen(){
     }
 #endif
 
-    setUiEnabled(true);
+        readConfigFromDevice();
 
-    readConfigFromDevice();
+		qDebug() << "RX_PW_P0" << nrf24l01p_read_byte(RX_PW_P0);
+
+		disable_irqs();
+		set_rx_mode();
+		power_up();
+
+		timer->start();
+
+    } else {
+		timer->stop();
+		power_down();
+
+    }
+
+
+    setUiEnabled(opened);
+
+
 }
 
 
@@ -272,7 +296,7 @@ void MainWindow::readConfigFromDevice(){
 		QCheckBox *autoAckRx= this->findChild<QCheckBox *>(QString("autoAckRx%1").arg(i));
 		autoAckRx->setChecked(is_auto_ack_enabled(i));
 		QCheckBox *fixedPacketSizeRx= this->findChild<QCheckBox *>(QString("fixedPacketSizeRx%1").arg(i));
-		fixedPacketSizeRx->setChecked(is_pipe_dyn_size_enabled(i));
+		fixedPacketSizeRx->setChecked(!is_pipe_dyn_size_enabled(i));
 
 		QSpinBox *packetSizeRx= this->findChild<QSpinBox *>(QString("packetSizeRx%1").arg(i));
 		packetSizeRx->setEnabled(fixedPacketSizeRx->isChecked());
@@ -280,20 +304,6 @@ void MainWindow::readConfigFromDevice(){
 		
 	}
 
-
-
-
-    qDebug() << "RX_PW_P0" << nrf24l01p_read_byte(RX_PW_P0);
-
-    power_up();
-    set_rx_mode();
-
-
-
-    timer = new QTimer(this);
-    timer->setInterval(10);
-    connect(timer, SIGNAL(timeout()), this, SLOT(checkNewPacket()));
-    timer->start();
 
 }
 
@@ -489,15 +499,7 @@ void MainWindow::onAddressWidthChanged(){
 }
 
 
-void MainWindow::onRX1Changed(){
-    QString mask = getMaskFromRX1();
-    /*
-    ui->rx2Address->setInputMask(mask);
-    ui->rx3Address->setInputMask(mask);
-    ui->rx4Address->setInputMask(mask);
-    ui->rx5Address->setInputMask(mask);
-    */
-}
+
 
 QString MainWindow::getMaskFromRX1(){
     return "HH;0";
@@ -760,6 +762,8 @@ void MainWindow::onSendPacket(){
     QString text = ui->payloadData->text();
     QByteArray binary;
 
+	if (text.isEmpty()) return;
+
     if (ui->hexPayload->isChecked()){
         binary = QByteArray::fromHex( QByteArray().append(text));
     } else {
@@ -770,17 +774,14 @@ void MainWindow::onSendPacket(){
 
         nrf24l01p_write(W_TX_PAYLOAD, (uint8_t*)binary.data(), binary.length());
 
-        uint8_t fifo_st = 0, st = 0;
-
+		uint8_t fifo_st = 0, st = 0;
         do{
             st = nrf24l01p_read(R_REGISTER | FIFO_STATUS, &fifo_st, 1);
-            //fifo_st = nrf24l01p_read_byte(R_REGISTER | FIFO_STATUS);
-            //st = nrf24l01p_read_byte(R_REGISTER | STATUS);
         } while( !is_tx_fifo_empty(fifo_st) && !is_max_retrys(st) );
 
         if (is_max_retrys(st)){
-            nrf24l01p_write_byte(W_REGISTER | STATUS, st);
-            nrf24l01p_write(FLUSH_TX, 0, 0);
+			nrf24l01p_write(FLUSH_TX, 0, 0);
+            nrf24l01p_write_byte(W_REGISTER | STATUS, st & 0x70); // clear status
         } else {
             status = QString("OK");
         }
@@ -835,13 +836,30 @@ void MainWindow::setUiEnabled(bool enabled)
     ui->adressesGroupBox->setEnabled(enabled);
     ui->settingsGroupBox->setEnabled(enabled);
     ui->tabWidget->setEnabled(enabled);
+
+	ui->actionPinout->setEnabled(!enabled);
+
+	ui->actionLoad->setEnabled(enabled);
+	ui->actionSave->setEnabled(enabled);
+	ui->actionTestConnection->setEnabled(enabled);
+	ui->actionMemDump->setEnabled(enabled);
 }
 
 void MainWindow::configPinouts()
 {
 	FTDIPinout * pinoutDialog = new FTDIPinout(this);
+	pinoutDialog->initPins(CSN, SCK, MOSI, MISO, CE);
 	pinoutDialog->setModal(true);
-    pinoutDialog->show();
+	qDebug() << "before show";
+	int val = pinoutDialog->exec();
+	if (val){
+			qDebug() << "MISO" << MISO;
+			MISO = pinoutDialog->getMISO();
+			qDebug() << "MISO" << MISO;
+	}
+
+    //pinoutDialog->show();
+	qDebug() << "after show" << val;
 }
 
 void MainWindow::onDynPayloadLen(bool state)
@@ -931,11 +949,12 @@ void MainWindow::scanDevices()
 
 
 #endif
-
-
-    ui->controlButtons->setEnabled(ui->devicesComboBox->count() > 0);
+	if (!timer->isActive()){
+		ui->actionConnect->setEnabled(ui->devicesComboBox->count() > 0);
+	}
 
 }
+
 
 
 

@@ -1,12 +1,12 @@
 <RCC>
     <qresource prefix="/imgs">
-        <file>open96.png</file>
-        <file>cogs3.png</file>
-        <file>save8.png</file>
-        <file>cpu5.png</file>
-        <file>refresh36.png</file>
-        <file>testtube1.png</file>
-        <file>bad7.png</file>
-        <file>plug42.png</file>
+        <file>res/open96.png</file>
+        <file>res/cogs3.png</file>
+        <file>res/save8.png</file>
+        <file>res/cpu5.png</file>
+        <file>res/refresh36.png</file>
+        <file>res/testtube1.png</file>
+        <file>res/bad7.png</file>
+        <file>res/plug42.png</file>
     </qresource>
 </RCC>

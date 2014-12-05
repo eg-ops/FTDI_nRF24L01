@@ -19,9 +19,9 @@ public:
 private:
 	Ui::Dialog ui;
     QMap<int, QString> FT232RL_pinName;
-    QMap<int, int> FT232RL_mapping;
+    QMap<int, int> FT232RL_mapping; // bit to pin
     QMap<int, QString> FT232RQ_pinName;
-    QMap<int, int> FT232RQ_mapping;
+    QMap<int, int> FT232RQ_mapping; // bit to pin
     QList<int> available;
     QList<QComboBox *> pins;
     QList<QToolButton *> resets;
@@ -29,6 +29,9 @@ private:
 
 
     QSettings settings;
+
+	int toBitIndex(unsigned char val);
+
 public:
     int getCE();
     int getSCK();
@@ -42,7 +45,7 @@ public slots:;
     void pinAcquire(int index);
     void pinReleased();
     void save();
-
+	void initPins(unsigned char CSN, unsigned char SCK, unsigned char MOSI, unsigned char MISO, unsigned char CE);
 };
 
 #endif // FTDIPINOUT_H

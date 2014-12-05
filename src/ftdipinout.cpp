@@ -128,19 +128,49 @@ FTDIPinout::~FTDIPinout()
 
 }
 
-#define CSN 0
-#define SCK 1
-#define MOSI 2
-#define MISO 3
-#define CE 4
+
+void FTDIPinout::initPins(unsigned char CSN, unsigned char SCK, unsigned char MOSI, unsigned char MISO, unsigned char CE)
+{
+	int index = ui.comboBox_CSN->findData(QVariant(toBitIndex(CSN)));
+	if (index >= 0){
+		ui.comboBox_CSN->setCurrentIndex(index);
+	}
+	
+	index = ui.comboBox_SCK->findData(QVariant(toBitIndex(SCK)));
+	if (index >= 0){
+		ui.comboBox_SCK->setCurrentIndex(index);
+	}
+
+	index = ui.comboBox_MOSI->findData(QVariant(toBitIndex(MOSI)));
+	if (index >= 0){
+		ui.comboBox_MOSI->setCurrentIndex(index);
+	}
+
+	index = ui.comboBox_MISO->findData(QVariant(toBitIndex(MISO)));
+	if (index >= 0){
+		ui.comboBox_MISO->setCurrentIndex(index);
+	}
+
+	index = ui.comboBox_CE->findData(QVariant(toBitIndex(CE)));
+	if (index >= 0){
+		ui.comboBox_CE->setCurrentIndex(index);
+	}
+
+}
+
+#define CSN_ 0
+#define SCK_ 1
+#define MOSI_ 2
+#define MISO_ 3
+#define CE_ 4
 
 int FTDIPinout::getCE()
 {
 	int index = ui.comboBox_CE->currentIndex();
 	if (index >= 0){
-		return ui.comboBox_CE->itemData(index).toInt();
+		return (1 << ui.comboBox_CE->itemData(index).toInt());
 	} else {
-		return CE;
+		return (1 << CE_);
 	}
 }
 
@@ -148,9 +178,9 @@ int FTDIPinout::getSCK()
 {
 	int index = ui.comboBox_SCK->currentIndex();
 	if (index >= 0){
-		return ui.comboBox_SCK->itemData(index).toInt();
+		return (1 << ui.comboBox_SCK->itemData(index).toInt());
 	} else {
-		return SCK;
+		return (1 << SCK_);
 	}
 }
 
@@ -158,9 +188,9 @@ int FTDIPinout::getMOSI()
 {
 	int index = ui.comboBox_MOSI->currentIndex();
 	if (index >= 0){
-		return ui.comboBox_MOSI->itemData(index).toInt();
+		return (1 << ui.comboBox_MOSI->itemData(index).toInt());
 	} else {
-		return MOSI;
+		return (1 << MOSI_);
 	}
 }
 
@@ -168,9 +198,9 @@ int FTDIPinout::getMISO()
 {
 	int index = ui.comboBox_MISO->currentIndex();
 	if (index >= 0){
-		return ui.comboBox_MISO->itemData(index).toInt();
+		return (1 << ui.comboBox_MISO->itemData(index).toInt());
 	} else {
-		return MISO;
+		return (1 << MISO_);
 	}
 }
 
@@ -178,9 +208,9 @@ int FTDIPinout::getCSN()
 {
 	int index = ui.comboBox_CSN->currentIndex();
 	if (index >= 0){
-		return ui.comboBox_CSN->itemData(index).toInt();
+		return (1 << ui.comboBox_CSN->itemData(index).toInt());
 	} else {
-		return CSN;
+		return (1 << CSN_);
 	}
 }
 
@@ -192,7 +222,7 @@ void FTDIPinout::save()
     }
     settings.setValue(ui.chipSelector->objectName(), ui.chipSelector->currentIndex());
     settings.sync();
-    close();
+    accept();
 }
 
 void FTDIPinout::onChipChange(int index)
@@ -202,9 +232,9 @@ void FTDIPinout::onChipChange(int index)
     foreach( QComboBox * cbox , pins){
         cbox->clear();
         cbox->addItem("",-1);
-        foreach (int key , mapping->keys()){
-            int pin = mapping->value(key);
-            cbox->addItem( nameMapping->value(pin), key );
+        foreach (int keyBitIndex , mapping->keys()){
+            int pin = mapping->value(keyBitIndex);
+            cbox->addItem( nameMapping->value(pin), keyBitIndex );
         }
     }
 }
@@ -254,4 +284,15 @@ void FTDIPinout::pinReleased()
             btn->setEnabled(false);
         }
     }
+}
+
+int FTDIPinout::toBitIndex( unsigned char val)
+{
+	int i = 0;
+	for (; i < 8; i++){
+		if (val & (1 << i)) {
+			return i;
+		}
+	}
+	return -1;
 }
