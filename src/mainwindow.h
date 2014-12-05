@@ -8,6 +8,7 @@
 #include <QDateTime>
 #include <QRegExp>
 #include <QByteArray>
+#include <QSettings>
 #ifdef _WIN32
 #include <Windows.h>
 #include <ftd2xx.h>
@@ -57,8 +58,11 @@ private:
     uint8_t nrf24l01p_write(uint8_t reg, uint8_t * mem, int size);
     uint8_t nrf24l01p_read_byte(uint8_t reg);
     uint8_t nrf24l01p_write_byte(uint8_t reg, uint8_t value);
-    void save();
+    void save(QString filename);
+    void setUiEnabled(bool enabled);
     QTimer * timer;
+    QSettings settings;
+
 
 	int oldEN_AA;
 
@@ -68,12 +72,14 @@ private:
 	unsigned char MISO;
 	unsigned char CE;
 
-    void setUiEnabled(bool enabled);
+
 
 
 public slots:
     void onOpen(bool opened);
     void readConfigFromDevice();
+    void onLoadConfig();
+    void onSaveConfig();
 	void onTestConnection();
     void onAddressWidthChanged();
 

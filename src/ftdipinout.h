@@ -8,6 +8,13 @@
 #include <QSettings>
 #include "ui_FTDI_Pinout.h"
 
+
+#define CSN_DEFAULT_BIT_INDEX 0
+#define SCK_DEFAULT_BIT_INDEX 1
+#define MOSI_DEFAULT_BIT_INDEX 2
+#define MISO_DEFAULT_BIT_INDEX 3
+#define CE_DEFAULT_BIT_INDEX 4
+
 class FTDIPinout : public QDialog
 {
 	Q_OBJECT
@@ -31,6 +38,8 @@ private:
     QSettings settings;
 
 	int toBitIndex(unsigned char val);
+    int getBit(QComboBox * cbox, int def);
+    void isAllPinsSet();
 
 public:
     int getCE();

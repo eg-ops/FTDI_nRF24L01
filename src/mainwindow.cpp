@@ -2,7 +2,8 @@
 #include "ui_mainwindow.h"
 #include <QDebug>
 #include <QStandardItem>
-#include <QSettings>
+#include <QFileDialog>
+#include <QProgressDialog>
 #include "ftdipinout.h"
 #include "hexvalidator.h"
 
@@ -16,11 +17,11 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
 
 	oldEN_AA = 0x3F;
 
-	CSN = (1 << 0);
-	SCK = (1 << 1);
-	MOSI = (1 << 2);
-	MISO = (1 << 3);
-	CE = (1 << 4);
+    CSN = settings.value("CSN", (1 << 0)).toInt();
+    SCK = settings.value("SCK", (1 << 1)).toInt();
+    MOSI = settings.value("MOSI", (1 << 2)).toInt();
+    MISO = settings.value("MISO", (1 << 3)).toInt();
+    CE = settings.value("CE", (1 << 4)).toInt();
 
 #ifdef __linux__
 	ftdi = NULL;
@@ -31,10 +32,11 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     connect(ui->actionRefresh, SIGNAL(triggered()), this, SLOT(scanDevices()));
     connect(ui->actionTestConnection, SIGNAL(triggered()), this, SLOT(onTestConnection()));
     connect(ui->actionPinout, SIGNAL(triggered()), this, SLOT(configPinouts()));
+    connect(ui->actionLoad, SIGNAL(triggered()), this, SLOT(onLoadConfig()));
+    connect(ui->actionSave, SIGNAL(triggered()), this, SLOT(onSaveConfig()));
     connect(ui->addressWidth3, SIGNAL(clicked()), this ,SLOT(onAddressWidthChanged()));
     connect(ui->addressWidth4, SIGNAL(clicked()), this ,SLOT(onAddressWidthChanged()));
     connect(ui->addressWidth5, SIGNAL(clicked()), this ,SLOT(onAddressWidthChanged()));
-    connect(ui->rx1Address, SIGNAL(textChanged(QString)), this, SLOT(onRX1Changed()));
 
     ui->mainToolBar->insertWidget(ui->actionRefresh, ui->devicesComboBox);
 
@@ -199,6 +201,14 @@ void MainWindow::onTestConnection(){
 	unsigned char read[5] = {0};
 	unsigned char olda[5] = {0};
 	
+
+    QProgressDialog * progress = new QProgressDialog(this);
+    progress->setWindowModality(Qt::WindowModal);
+    progress->setMaximum(1000-1);
+    progress->setMinimum(0);
+    progress->setAutoClose(true);
+    progress->show();
+
 	nrf24l01p_read(TX_ADDR, olda, sizeof(olda));
 	for (int y = 0; y < 1000; y++){
 
@@ -214,11 +224,15 @@ void MainWindow::onTestConnection(){
 		} else {
 			qDebug() << y << ": " << convertAddress(addr) << " : " << convertAddress(read);
 		}
+        progress->setValue(y);
+        usleep(1000);
+        QCoreApplication::processEvents(); //  hack should be moved in separate thread
+
+        if (progress->wasCanceled()) break;
 
 	}
 
 	nrf24l01p_write(W_REGISTER | TX_ADDR, olda, sizeof(olda));
-
 
 }
 
@@ -305,6 +319,25 @@ void MainWindow::readConfigFromDevice(){
 	}
 
 
+}
+
+void MainWindow::onLoadConfig()
+{
+    QString filename = QFileDialog::getOpenFileName(this, tr("Load Configuration"), "", tr("Config (*.nrf24)"));
+    if (!filename.isEmpty()){
+        qDebug() << "Loading" << filename;
+
+    }
+}
+
+void MainWindow::onSaveConfig()
+{
+    QString filename = QFileDialog::getSaveFileName(this,  tr("Save Configuration"), "", tr("Config (*.nrf24)"));
+    if (!filename.isEmpty()){
+        qDebug() << "Saving" << filename;
+        save(filename);
+
+    }
 }
 
 QString MainWindow::convertAddress(unsigned char * addr){
@@ -729,7 +762,6 @@ void MainWindow::onPipeSizeChange(int newSize){
         } else {
             qDebug() << "newSize out of range";
         }
-
     }
 }
 
@@ -805,9 +837,9 @@ void MainWindow::onSendPacket(){
 
 }
 
-void MainWindow::save()
+void MainWindow::save(QString filename)
 {
-	QSettings settings("settings.conf", QSettings::NativeFormat);
+    QSettings settings(filename, QSettings::NativeFormat);
 	settings.sync();
 	foreach(QString key, settings.allKeys()){
 		qDebug() << key << settings.value(key);
@@ -853,9 +885,18 @@ void MainWindow::configPinouts()
 	qDebug() << "before show";
 	int val = pinoutDialog->exec();
 	if (val){
-			qDebug() << "MISO" << MISO;
+            qDebug() << CSN << SCK << MOSI << MISO << CE;
+            CSN = pinoutDialog->getCSN();
+            SCK = pinoutDialog->getSCK();
+            MOSI = pinoutDialog->getMOSI();
 			MISO = pinoutDialog->getMISO();
-			qDebug() << "MISO" << MISO;
+            CE = pinoutDialog->getCE();
+            qDebug() << CSN << SCK << MOSI << MISO << CE;
+            settings.setValue("CSN", CSN);
+            settings.setValue("SCK", SCK);
+            settings.setValue("MOSI", MOSI);
+            settings.setValue("MISO", MISO);
+            settings.setValue("CE", CE);
 	}
 
     //pinoutDialog->show();
@@ -950,7 +991,9 @@ void MainWindow::scanDevices()
 
 #endif
 	if (!timer->isActive()){
-		ui->actionConnect->setEnabled(ui->devicesComboBox->count() > 0);
+        #ifndef __linux__
+        ui->actionConnect->setEnabled(ui->devicesComboBox->count() > 0);
+        #endif
 	}
 
 }

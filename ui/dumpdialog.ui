@@ -1,6 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
  <class>DumpDialog</class>
- <widget name="DumpDialog" class="QDialog">
+ <widget class="QDialog" name="DumpDialog">
+  <property name="windowModality">
+   <enum>Qt::ApplicationModal</enum>
+  </property>
   <property name="geometry">
    <rect>
     <x>0</x>

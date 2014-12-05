@@ -90,7 +90,7 @@ FTDIPinout::FTDIPinout(QWidget *parent)
     FT232RQ_mapping.insert(6, 7);
     FT232RQ_mapping.insert(7, 3);
 
-
+    setFixedSize(width(), height());
 
     onChipChange(0);
 
@@ -105,21 +105,7 @@ FTDIPinout::FTDIPinout(QWidget *parent)
         connect(btn, SIGNAL(clicked()), this, SLOT(pinReleased()));
     }
 
-    ui.chipSelector->setCurrentIndex(settings.value(ui.chipSelector->objectName(), QVariant(0)).toInt());
-
-    foreach (QComboBox * child, this->findChildren<QComboBox*>(QRegExp("comboBox_\\w+"))){
-        int index = child->findData(settings.value(child->objectName()));
-        if (index >= 0){
-            child->setCurrentIndex(index);
-        }
-    }
-
-
-
-
-
-
-
+    isAllPinsSet();
 
 }
 
@@ -133,95 +119,96 @@ void FTDIPinout::initPins(unsigned char CSN, unsigned char SCK, unsigned char MO
 {
 	int index = ui.comboBox_CSN->findData(QVariant(toBitIndex(CSN)));
 	if (index >= 0){
+        qDebug() << "CSN" << index;
 		ui.comboBox_CSN->setCurrentIndex(index);
 	}
 	
 	index = ui.comboBox_SCK->findData(QVariant(toBitIndex(SCK)));
 	if (index >= 0){
+        qDebug() << "SCK" << index;
 		ui.comboBox_SCK->setCurrentIndex(index);
 	}
 
 	index = ui.comboBox_MOSI->findData(QVariant(toBitIndex(MOSI)));
 	if (index >= 0){
+        qDebug() << "MOSI" << index;
 		ui.comboBox_MOSI->setCurrentIndex(index);
 	}
 
 	index = ui.comboBox_MISO->findData(QVariant(toBitIndex(MISO)));
 	if (index >= 0){
+        qDebug() << "MISO" << index;
 		ui.comboBox_MISO->setCurrentIndex(index);
 	}
 
 	index = ui.comboBox_CE->findData(QVariant(toBitIndex(CE)));
 	if (index >= 0){
+        qDebug() << "CE" << index;
 		ui.comboBox_CE->setCurrentIndex(index);
 	}
 
 }
 
-#define CSN_ 0
-#define SCK_ 1
-#define MOSI_ 2
-#define MISO_ 3
-#define CE_ 4
+int FTDIPinout::getBit(QComboBox * cbox, int def){
+    int index = cbox->currentIndex();
+    if (index >= 0){
+        return (1 << cbox->itemData(index).toInt());
+    } else {
+        return (1 << def);
+    }
+}
+
+void FTDIPinout::isAllPinsSet()
+{
+
+    bool oneNotset = false;
+    foreach (QComboBox * child, this->findChildren<QComboBox*>(QRegExp("comboBox_\\w+"))){
+        int bitIndex = child->itemData(child->currentIndex()).toInt();
+        if (bitIndex == -1){
+            oneNotset = true;
+            break;
+        }
+    }
+
+    ui.saveButton->setEnabled(!oneNotset);
+
+}
 
 int FTDIPinout::getCE()
 {
-	int index = ui.comboBox_CE->currentIndex();
-	if (index >= 0){
-		return (1 << ui.comboBox_CE->itemData(index).toInt());
-	} else {
-		return (1 << CE_);
-	}
+    return getBit(ui.comboBox_CE, CE_DEFAULT_BIT_INDEX);
 }
 
 int FTDIPinout::getSCK()
 {
-	int index = ui.comboBox_SCK->currentIndex();
-	if (index >= 0){
-		return (1 << ui.comboBox_SCK->itemData(index).toInt());
-	} else {
-		return (1 << SCK_);
-	}
+    return getBit(ui.comboBox_SCK, SCK_DEFAULT_BIT_INDEX);
 }
 
 int FTDIPinout::getMOSI()
 {
-	int index = ui.comboBox_MOSI->currentIndex();
-	if (index >= 0){
-		return (1 << ui.comboBox_MOSI->itemData(index).toInt());
-	} else {
-		return (1 << MOSI_);
-	}
+    return getBit(ui.comboBox_MOSI, MOSI_DEFAULT_BIT_INDEX);
 }
 
 int FTDIPinout::getMISO()
 {
-	int index = ui.comboBox_MISO->currentIndex();
-	if (index >= 0){
-		return (1 << ui.comboBox_MISO->itemData(index).toInt());
-	} else {
-		return (1 << MISO_);
-	}
+    return getBit(ui.comboBox_MISO, MISO_DEFAULT_BIT_INDEX);
 }
 
 int FTDIPinout::getCSN()
 {
-	int index = ui.comboBox_CSN->currentIndex();
-	if (index >= 0){
-		return (1 << ui.comboBox_CSN->itemData(index).toInt());
-	} else {
-		return (1 << CSN_);
-	}
+    return getBit(ui.comboBox_CSN, CSN_DEFAULT_BIT_INDEX);
 }
 
 void FTDIPinout::save()
 {
+    /*
     foreach (QComboBox * child, this->findChildren<QComboBox*>(QRegExp("comboBox_\\w+"))){
         qDebug() << child->objectName();
         settings.setValue(child->objectName(), child->itemData(child->currentIndex()));
     }
     settings.setValue(ui.chipSelector->objectName(), ui.chipSelector->currentIndex());
     settings.sync();
+    */
     accept();
 }
 
@@ -271,6 +258,8 @@ void FTDIPinout::pinAcquire(int index)
         prevPin[cbox] = pinIndex;
     }
 
+    isAllPinsSet();
+
 }
 
 void FTDIPinout::pinReleased()
@@ -284,6 +273,8 @@ void FTDIPinout::pinReleased()
             btn->setEnabled(false);
         }
     }
+
+    isAllPinsSet();
 }
 
 int FTDIPinout::toBitIndex( unsigned char val)
