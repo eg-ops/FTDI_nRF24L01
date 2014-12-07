@@ -14,11 +14,43 @@ For development I'm using module like this, any other module should work too.
 Features
 ========
 
-- Receiving Packets
-- Sending Packets
+- receiving packets
+- sending packets
+- saving and loading configuration
+- variable pin configuration
+
+How To Use
+==========
+
+Connect your FTDI Module/Adaptor with nRF24l01 or nRF24l01+
+
+- CE <-> DTR#
+- SCK <-> RXD
+- MOSI <-> RTS#
+- MISO <-> DTR#
+- CSN <-> TXD
+- GND <-> GND
+- VCC <-> VCC
+- IRQ - not connected
+
+Make sure that your FTDI Module/Adaptor use 3.3V VCC.
+
+![Alt text](http://arduino-info.wikispaces.com/file/view/24L01Pinout-800.jpg/243330999/24L01Pinout-800.jpg "Connection Ref")
+
+
+Here is example possible connection.
+
+![Alt text](/docs/2014-12-07 13.06.16.jpg?raw=true "Connection Ref")
 
 Screenshot
 ==========
 
-![alt tag](http://forum.easyelectronics.ru/download/file.php?id=18177&t=1)
+![alt tag](/docs/Screenshot 2014-12-07 11.51.35.png)
+
+
+Download
+========
+Executables are inside r direcotory.
+
+- latest version https://github.com/g-gabber/FTDI_nRF24L01/archive/master.zip
 
