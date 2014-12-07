@@ -9,6 +9,7 @@
 #include <QRegExp>
 #include <QByteArray>
 #include <QSettings>
+#include <QMap>
 #ifdef _WIN32
 #include <Windows.h>
 #include <ftd2xx.h>
@@ -59,9 +60,11 @@ private:
     uint8_t nrf24l01p_read_byte(uint8_t reg);
     uint8_t nrf24l01p_write_byte(uint8_t reg, uint8_t value);
     void save(QString filename);
+	void load(QString filename);
     void setUiEnabled(bool enabled);
     QTimer * timer;
     QSettings settings;
+	QMap<int, QString> memoryMap;
 
 
 	int oldEN_AA;
@@ -81,6 +84,7 @@ public slots:
     void onLoadConfig();
     void onSaveConfig();
 	void onTestConnection();
+	void onMemDump();
     void onAddressWidthChanged();
 
     void onLNAGain(bool state);

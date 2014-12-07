@@ -22,7 +22,7 @@ unix {
 
 win32 {
     INCLUDEPATH += "deps/win"
-    LIBS += -L"deps/win/CDM v2.08.30 WHQL Certified/i386" -lftd2xx
+    LIBS += -L"$$PWD/deps/win/CDM v2.08.30 WHQL Certified//i386" -lftd2xx
 }
 
 SOURCES += src/main.cpp\

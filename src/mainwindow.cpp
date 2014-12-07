@@ -4,6 +4,7 @@
 #include <QStandardItem>
 #include <QFileDialog>
 #include <QProgressDialog>
+#include <QMessageBox>
 #include "ftdipinout.h"
 #include "hexvalidator.h"
 
@@ -23,6 +24,31 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     MISO = settings.value("MISO", (1 << 3)).toInt();
     CE = settings.value("CE", (1 << 4)).toInt();
 
+	memoryMap.insert(CONFIG, QString("7F"));
+	memoryMap.insert(EN_AA, QString("3F"));
+	memoryMap.insert(EN_RXADDR, QString("3F"));
+	memoryMap.insert(SETUP_AW, QString("03"));
+	memoryMap.insert(SETUP_RETR, QString("FF"));
+	memoryMap.insert(RF_CH, QString("7F"));
+	memoryMap.insert(RF_SETUP, QString("FF"));
+	memoryMap.insert(RX_ADDR_P0, QString("FFFFFFFFFF"));
+	memoryMap.insert(RX_ADDR_P1, QString("FFFFFFFFFF"));
+	memoryMap.insert(RX_ADDR_P2, QString("FF"));
+	memoryMap.insert(RX_ADDR_P3, QString("FF"));
+	memoryMap.insert(RX_ADDR_P4, QString("FF"));
+	memoryMap.insert(RX_ADDR_P5, QString("FF"));
+	memoryMap.insert(TX_ADDR, QString("FFFFFFFFFF"));
+	memoryMap.insert(RX_PW_P0, QString("3F"));
+	memoryMap.insert(RX_PW_P1, QString("3F"));
+	memoryMap.insert(RX_PW_P2, QString("3F"));
+	memoryMap.insert(RX_PW_P3, QString("3F"));
+	memoryMap.insert(RX_PW_P4, QString("3F"));
+	memoryMap.insert(RX_PW_P5, QString("3F"));
+	memoryMap.insert(DYNPD, QString("3F"));
+	memoryMap.insert(FEATURE, QString("07"));
+
+
+
 #ifdef __linux__
 	ftdi = NULL;
 #endif
@@ -34,6 +60,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     connect(ui->actionPinout, SIGNAL(triggered()), this, SLOT(configPinouts()));
     connect(ui->actionLoad, SIGNAL(triggered()), this, SLOT(onLoadConfig()));
     connect(ui->actionSave, SIGNAL(triggered()), this, SLOT(onSaveConfig()));
+	connect(ui->actionMemDump, SIGNAL(triggered()), this, SLOT(onMemDump()));
     connect(ui->addressWidth3, SIGNAL(clicked()), this ,SLOT(onAddressWidthChanged()));
     connect(ui->addressWidth4, SIGNAL(clicked()), this ,SLOT(onAddressWidthChanged()));
     connect(ui->addressWidth5, SIGNAL(clicked()), this ,SLOT(onAddressWidthChanged()));
@@ -182,6 +209,11 @@ void MainWindow::onOpen(bool opened){
 		timer->start();
 
     } else {
+        #ifdef _WIN32
+        FT_Close(ftHandle);
+        #elif __linux__
+        ftdi_usb_close(ftdi);
+        #endif
 		timer->stop();
 		power_down();
 
@@ -225,7 +257,6 @@ void MainWindow::onTestConnection(){
 			qDebug() << y << ": " << convertAddress(addr) << " : " << convertAddress(read);
 		}
         progress->setValue(y);
-        usleep(1000);
         QCoreApplication::processEvents(); //  hack should be moved in separate thread
 
         if (progress->wasCanceled()) break;
@@ -279,6 +310,14 @@ void MainWindow::readConfigFromDevice(){
 
     ui->dynPayloadLen->setChecked(is_dyn_size_enabled());
 
+
+	int addrWidth = get_address_width() + 2;
+	QRadioButton *enRX= this->findChild<QRadioButton *>(QString("addressWidth%1").arg(addrWidth));
+	if (enRX){
+		enRX->setChecked(true);
+		changeAddrMask(addrWidth);
+	}
+
     unsigned char addr_tx[5];
 
     nrf24l01p_read(TX_ADDR, addr_tx, sizeof(addr_tx));
@@ -296,13 +335,6 @@ void MainWindow::readConfigFromDevice(){
     nrf24l01p_read(RX_ADDR_P5, addr_tx, 1);
     ui->rx5Address->setText(QString("%1").arg(addr_tx[0], 2, 16, QChar('0')).toUpper());
 
-	int addrWidth = get_address_width() + 2;
-	QRadioButton *enRX= this->findChild<QRadioButton *>(QString("addressWidth%1").arg(addrWidth));
-	if (enRX){
-		enRX->setChecked(true);
-		changeAddrMask(addrWidth);
-	}
-	
 	for(int i = 0; i < 5; ++i)
 	{
 		QCheckBox *enRX= this->findChild<QCheckBox *>(QString("enRX%1").arg(i));
@@ -325,8 +357,11 @@ void MainWindow::onLoadConfig()
 {
     QString filename = QFileDialog::getOpenFileName(this, tr("Load Configuration"), "", tr("Config (*.nrf24)"));
     if (!filename.isEmpty()){
+		power_down();
         qDebug() << "Loading" << filename;
-
+		load(filename);
+		readConfigFromDevice();
+		power_up();
     }
 }
 
@@ -839,27 +874,41 @@ void MainWindow::onSendPacket(){
 
 void MainWindow::save(QString filename)
 {
-    QSettings settings(filename, QSettings::NativeFormat);
+
+	QSettings settings(filename, QSettings::IniFormat);
+
+	foreach (int addr, memoryMap.keys()){
+		QByteArray mask = QByteArray::fromHex(memoryMap[addr].toUtf8());
+		QByteArray mem(mask);
+		nrf24l01p_read(addr, (unsigned char *)mem.data(), mask.length());
+		for (int i=0; i < mask.length(); i++){
+			mem.data()[0] &= mask.data()[0];
+		}
+		settings.setValue(QString("%1").arg(addr, 2, 16, QChar('0')), QString::fromUtf8(mem.toHex().constData()));
+	}
+
 	settings.sync();
-	foreach(QString key, settings.allKeys()){
-		qDebug() << key << settings.value(key);
+
+}
+
+void MainWindow::load(QString filename)
+{
+
+	QSettings settings(filename, QSettings::IniFormat);
+	QStringList keys = settings.allKeys();
+	keys.sort();
+	foreach (QString keyStr, keys){
+		bool ok;
+		int addr = keyStr.toInt(&ok, 16);
+		if (ok){
+			QByteArray data = QByteArray::fromHex(settings.value(keyStr).toByteArray());
+			nrf24l01p_write(W_REGISTER | addr, (unsigned char *)data.data(), data.length());
+		} else {
+			qDebug() << "bad key format" << keyStr;
+		}
 	}
-	foreach(QCheckBox* tb, findChildren<QCheckBox*>()){
-		settings.setValue(tb->objectName(), tb->isChecked());
-	}
-	foreach(QLineEdit * tb, findChildren<QLineEdit *>()){
-		settings.setValue(tb->objectName(), tb->text());
-	}
-	foreach(QRadioButton * tb, findChildren<QRadioButton *>()){
-		settings.setValue(tb->objectName(), tb->isChecked());
-	}
-	foreach(QSpinBox * tb, findChildren<QSpinBox *>()){
-		settings.setValue(tb->objectName(), tb->value());
-	}
+
 	settings.sync();
-	
-	
-		
 
 }
 
@@ -996,6 +1045,11 @@ void MainWindow::scanDevices()
         #endif
 	}
 
+}
+
+void MainWindow::onMemDump()
+{
+	QMessageBox::information(this, "MemDump",  "This function is not yet implemented.");
 }
 
 
