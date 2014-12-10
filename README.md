@@ -38,7 +38,7 @@ Make sure that your FTDI Module/Adaptor use 3.3V VCC.
 ![Alt text](http://arduino-info.wikispaces.com/file/view/24L01Pinout-800.jpg/243330999/24L01Pinout-800.jpg "Connection Ref")
 
 
-Here is example possible connection.
+Here is an example of possible connection.
 
 ![Alt text](/docs/2014-12-07 13.06.16.jpg?raw=true "Connection Ref")
 
